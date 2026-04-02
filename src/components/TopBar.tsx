@@ -23,9 +23,14 @@ export function TopBar() {
 }
 
 function Clock() {
+  const [time, setTime] = React.useState(new Date().toTimeString().slice(0, 8));
+  React.useEffect(() => {
+    const id = setInterval(() => setTime(new Date().toTimeString().slice(0, 8)), 1000);
+    return () => clearInterval(id);
+  }, []);
   return (
-    <span className="tracking-[2px] text-[10px] text-muted-foreground" suppressHydrationWarning>
-      {new Date().toTimeString().slice(0, 8)}
+    <span className="tracking-[2px] text-[10px] text-muted-foreground">
+      {time}
     </span>
   );
 }
