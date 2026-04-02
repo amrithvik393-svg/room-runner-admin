@@ -11,6 +11,9 @@ import AdminPage from "./pages/AdminPage.tsx";
 import RoomTimerPage from "./pages/RoomTimerPage.tsx";
 import IntelligenceRoomPage from "./pages/IntelligenceRoomPage.tsx";
 import ScoreboardPage from "./pages/ScoreboardPage.tsx";
+import BossVitalsPage from "./pages/BossVitalsPage.tsx";
+import BossFilesPage from "./pages/BossFilesPage.tsx";
+import VolunteerPage from "./pages/VolunteerPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -31,6 +34,9 @@ const App = () => (
               <Route path="/room/:roomId" element={<RoomTimerPage />} />
               <Route path="/intelligence" element={<IntelligenceRoomPage />} />
               <Route path="/scoreboard" element={<ScoreboardPage />} />
+              <Route path="/boss/vitals" element={<BossVitalsPage />} />
+              <Route path="/boss/files" element={<BossFilesPage />} />
+              <Route path="/volunteer" element={<VolunteerPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </div>
