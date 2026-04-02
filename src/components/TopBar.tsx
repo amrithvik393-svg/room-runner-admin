@@ -24,8 +24,8 @@ export function TopBar() {
 }
 
 function Clock() {
-  const [time, setTime] = React.useState(new Date().toTimeString().slice(0, 8));
-  React.useEffect(() => {
+  const [time, setTime] = useState(new Date().toTimeString().slice(0, 8));
+  useEffect(() => {
     const id = setInterval(() => setTime(new Date().toTimeString().slice(0, 8)), 1000);
     return () => clearInterval(id);
   }, []);
