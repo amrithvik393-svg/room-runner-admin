@@ -9,6 +9,7 @@ export interface RoomConfig {
   timeMinutes: number;
   timeSeconds: number;
   volunteerName: string;
+  activeTeamId: string | null;
 }
 
 export interface IntelligenceConfig {
@@ -56,6 +57,12 @@ export interface PointAdjustment {
   createdAt: string;
 }
 
+export interface Volunteer {
+  id: string;
+  name: string;
+  password: string;
+}
+
 interface GameState {
   rooms: RoomConfig[];
   intelligence: IntelligenceConfig;
@@ -64,6 +71,7 @@ interface GameState {
   currentTeam: string;
   adminPassword: string;
   adjustments: PointAdjustment[];
+  volunteers: Volunteer[];
   loaded: boolean;
 }
 
@@ -76,10 +84,14 @@ interface GameContextType {
   removeTeam: (name: string) => void;
   updateTeamMembers: (teamName: string, members: TeamMember) => void;
   setCurrentTeam: (name: string) => void;
+  setRoomActiveTeam: (roomId: string, teamId: string | null) => void;
   awardPoints: (teamName: string, roomId: string, points: number, timeElapsed: number) => void;
   adjustPoints: (teamName: string, adjustedBy: string, points: number, reason: string) => void;
   resetTeamScores: () => void;
   setAdminPassword: (pw: string) => void;
+  addVolunteer: (name: string, password: string) => void;
+  removeVolunteer: (id: string) => void;
+  updateVolunteer: (id: string, data: Partial<{ name: string; password: string }>) => void;
   refreshData: () => void;
 }
 
@@ -100,22 +112,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     currentTeam: '',
     adminPassword: 'admin',
     adjustments: [],
+    volunteers: [],
     loaded: false,
   });
-  const refreshRef = useRef(false);
 
   const loadData = useCallback(async () => {
     try {
-      // Load config
       const { data: config } = await supabase.from('game_config').select('*').eq('id', 'main').single();
-      // Load rooms
       const { data: rooms } = await supabase.from('rooms').select('*').order('sort_order');
-      // Load teams
       const { data: teams } = await supabase.from('teams').select('*');
-      // Load scores
       const { data: scores } = await supabase.from('team_scores').select('*');
-      // Load adjustments
       const { data: adjustments } = await supabase.from('point_adjustments').select('*').order('created_at', { ascending: false });
+      const { data: volunteers } = await supabase.from('volunteers').select('*').order('created_at');
 
       if (!config || !rooms) return;
 
@@ -144,6 +152,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           id: r.id, name: r.name, password: r.password || '',
           points: r.points || 100, timeMinutes: r.time_minutes || 6,
           timeSeconds: r.time_seconds || 0, volunteerName: r.volunteer_name || '',
+          activeTeamId: (r as any).active_team_id || null,
         })),
         intelligence: {
           gateCode: config.intelligence_gate_code || 'MONK',
@@ -171,6 +180,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           id: a.id, teamId: a.team_id, adjustedBy: a.adjusted_by,
           points: a.points, reason: a.reason || '', createdAt: a.created_at || '',
         })),
+        volunteers: (volunteers || []).map(v => ({
+          id: v.id, name: v.name, password: v.password,
+        })),
         loaded: true,
       });
     } catch (err) {
@@ -180,16 +192,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     loadData();
-
-    // Subscribe to realtime changes
     const channel = supabase.channel('game-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_config' }, () => loadData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, () => loadData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, () => loadData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'team_scores' }, () => loadData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'point_adjustments' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'volunteers' }, () => loadData())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [loadData]);
 
@@ -201,6 +211,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (config.timeSeconds !== undefined) update.time_seconds = config.timeSeconds;
     if (config.volunteerName !== undefined) update.volunteer_name = config.volunteerName;
     if (config.name !== undefined) update.name = config.name;
+    if (config.activeTeamId !== undefined) update.active_team_id = config.activeTeamId;
     await supabase.from('rooms').update(update).eq('id', roomId);
   }, []);
 
@@ -232,10 +243,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const addTeam = useCallback(async (name: string, members?: TeamMember) => {
     await supabase.from('teams').insert({
       team_name: name.toUpperCase(),
-      member1: members?.member1 || '',
-      member2: members?.member2 || '',
-      member3: members?.member3 || '',
-      member4: members?.member4 || '',
+      member1: members?.member1 || '', member2: members?.member2 || '',
+      member3: members?.member3 || '', member4: members?.member4 || '',
     });
   }, []);
 
@@ -245,10 +254,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const updateTeamMembers = useCallback(async (teamName: string, members: TeamMember) => {
     await supabase.from('teams').update({
-      member1: members.member1,
-      member2: members.member2,
-      member3: members.member3,
-      member4: members.member4,
+      member1: members.member1, member2: members.member2,
+      member3: members.member3, member4: members.member4,
     }).eq('team_name', teamName);
   }, []);
 
@@ -256,15 +263,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     await supabase.from('game_config').update({ current_team: name }).eq('id', 'main');
   }, []);
 
+  const setRoomActiveTeam = useCallback(async (roomId: string, teamId: string | null) => {
+    await supabase.from('rooms').update({ active_team_id: teamId } as any).eq('id', roomId);
+  }, []);
+
   const awardPoints = useCallback(async (teamName: string, roomId: string, points: number, timeElapsed: number) => {
     const team = state.teams.find(t => t.teamName === teamName);
     if (!team) return;
     await supabase.from('team_scores').upsert({
-      team_id: team.id,
-      room_id: roomId,
-      completed: true,
-      time_elapsed: timeElapsed,
-      points,
+      team_id: team.id, room_id: roomId, completed: true,
+      time_elapsed: timeElapsed, points,
     }, { onConflict: 'team_id,room_id' });
   }, [state.teams]);
 
@@ -272,10 +280,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const team = state.teams.find(t => t.teamName === teamName);
     if (!team) return;
     await supabase.from('point_adjustments').insert({
-      team_id: team.id,
-      adjusted_by: adjustedBy,
-      points,
-      reason,
+      team_id: team.id, adjusted_by: adjustedBy, points, reason,
     });
   }, [state.teams]);
 
@@ -290,11 +295,27 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     await supabase.from('game_config').update({ admin_password: pw }).eq('id', 'main');
   }, []);
 
+  const addVolunteer = useCallback(async (name: string, password: string) => {
+    await supabase.from('volunteers').insert({ name: name.toUpperCase(), password });
+  }, []);
+
+  const removeVolunteer = useCallback(async (id: string) => {
+    await supabase.from('volunteers').delete().eq('id', id);
+  }, []);
+
+  const updateVolunteer = useCallback(async (id: string, data: Partial<{ name: string; password: string }>) => {
+    const update: any = {};
+    if (data.name !== undefined) update.name = data.name.toUpperCase();
+    if (data.password !== undefined) update.password = data.password;
+    await supabase.from('volunteers').update(update).eq('id', id);
+  }, []);
+
   return (
     <GameContext.Provider value={{
       state, updateRoom, updateIntelligence, updateBoss, addTeam, removeTeam,
-      updateTeamMembers, setCurrentTeam, awardPoints, adjustPoints, resetTeamScores,
-      setAdminPassword, refreshData: loadData,
+      updateTeamMembers, setCurrentTeam, setRoomActiveTeam, awardPoints, adjustPoints,
+      resetTeamScores, setAdminPassword, addVolunteer, removeVolunteer, updateVolunteer,
+      refreshData: loadData,
     }}>
       {children}
     </GameContext.Provider>
