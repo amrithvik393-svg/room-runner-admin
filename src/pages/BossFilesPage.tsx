@@ -298,6 +298,9 @@ If a panel flashes red — that value is wrong. Search again.</div>
         ROOT &gt; <span style={{ color: '#ffb000' }}>{pathLabels[currentPath] || currentPath}</span>
       </div>
       <div className="flex-1 p-5 overflow-y-auto">
+        {currentPath === 'root' && (
+          <Link to="/" style={{ fontFamily: 'monospace', fontSize: '15px', background: 'transparent', border: '1px solid #7a5200', color: '#ffb000', padding: '3px 10px', cursor: 'pointer', marginBottom: '14px', display: 'inline-block', textDecoration: 'none' }}>◄ BACK TO HUB</Link>
+        )}
         {renderFileArea()}
       </div>
       <div style={{ padding: '5px 16px', borderTop: '1px solid #2a1c00', fontSize: '9px', letterSpacing: '2px', color: '#7a5200', display: 'flex', justifyContent: 'space-between' }}>
