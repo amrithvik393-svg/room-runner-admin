@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useGame } from '@/context/GameContext';
 import { playSuccess, playFail, playMissionFailed } from '@/lib/sounds';
 import { MissionFailedFlash } from '@/components/MissionFailedFlash';
+import { getRoomColor } from '@/lib/roomColors';
+import { startBgMusic, stopBgMusic } from '@/lib/bgMusic';
 
 const RoomTimerPage = () => {
   const { roomId } = useParams<{ roomId: string }>();
@@ -21,6 +23,12 @@ const RoomTimerPage = () => {
   const [showFailFlash, setShowFailFlash] = useState(false);
   const intervalRef = useRef<number | null>(null);
 
+  const roomColor = getRoomColor(roomId || '');
+  
+  // Get per-room active team
+  const activeTeam = room ? state.teams.find(t => t.id === room.activeTeamId) : undefined;
+  const activeTeamName = activeTeam?.teamName || '';
+
   useEffect(() => {
     if (room) {
       const total = room.timeMinutes * 60 + room.timeSeconds;
@@ -28,6 +36,11 @@ const RoomTimerPage = () => {
       setRemaining(total);
     }
   }, [room]);
+
+  // Stop music on unmount
+  useEffect(() => {
+    return () => { stopBgMusic(); };
+  }, []);
 
   useEffect(() => {
     if (running && !paused) {
@@ -37,6 +50,7 @@ const RoomTimerPage = () => {
             clearInterval(intervalRef.current!);
             setRunning(false);
             setShowFailFlash(true);
+            stopBgMusic();
             playMissionFailed();
             setTimeout(() => {
               setShowFailFlash(false);
@@ -61,7 +75,8 @@ const RoomTimerPage = () => {
     setPaused(false);
     setStarted(true);
     setPhase('timer');
-  }, [room]);
+    if (roomId) startBgMusic(roomId);
+  }, [room, roomId]);
 
   const checkPassword = useCallback(() => {
     if (!room) return;
@@ -70,9 +85,10 @@ const RoomTimerPage = () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       setRunning(false);
       setPhase('success');
+      stopBgMusic();
       playSuccess();
-      if (state.currentTeam) {
-        awardPoints(state.currentTeam, room.id, room.points, elapsed);
+      if (activeTeamName) {
+        awardPoints(activeTeamName, room.id, room.points, elapsed);
       }
       setPwdInput('');
     } else {
@@ -81,7 +97,7 @@ const RoomTimerPage = () => {
       setPwdInput('');
       setTimeout(() => setPwdError(''), 1500);
     }
-  }, [pwdInput, room, state.currentTeam, elapsed, awardPoints]);
+  }, [pwdInput, room, activeTeamName, elapsed, awardPoints]);
 
   const reset = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -92,6 +108,7 @@ const RoomTimerPage = () => {
     setPwdInput('');
     setPwdError('');
     setShowFailFlash(false);
+    stopBgMusic();
     if (room) {
       const total = room.timeMinutes * 60 + room.timeSeconds;
       setTotalSeconds(total);
@@ -112,8 +129,12 @@ const RoomTimerPage = () => {
   const mins = Math.floor(remaining / 60);
   const secs = remaining % 60;
   const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  const colorClass = pct <= 0.15 ? 'text-destructive glow-red animate-critical' : pct <= 0.33 ? 'text-warning glow-orange' : 'text-foreground glow-green-lg';
-  const barColor = pct <= 0.15 ? 'bg-destructive shadow-[0_0_10px_hsl(var(--destructive))]' : pct <= 0.33 ? 'bg-warning shadow-[0_0_10px_hsl(var(--warning))]' : 'bg-foreground shadow-[0_0_10px_hsl(var(--primary))]';
+  
+  // Color based on time + room theme
+  const isLow = pct <= 0.15;
+  const isMid = pct <= 0.33;
+  const colorClass = isLow ? 'text-destructive animate-critical' : isMid ? 'text-warning' : roomColor.base;
+  const barColor = isLow ? 'bg-destructive shadow-[0_0_10px_hsl(var(--destructive))]' : isMid ? 'bg-warning shadow-[0_0_10px_hsl(var(--warning))]' : roomColor.bar;
 
   if (phase === 'success') {
     return (
@@ -123,9 +144,9 @@ const RoomTimerPage = () => {
         <div className="font-display text-[42px] font-black text-foreground tracking-[8px] text-center glow-green animate-fade-up" style={{ animationDelay: '0.5s', opacity: 0 }}>
           CLEARED
         </div>
-        {state.currentTeam && (
+        {activeTeamName && (
           <div className="text-[12px] text-secondary-foreground tracking-[3px] animate-fade-up" style={{ animationDelay: '0.8s', opacity: 0 }}>
-            +{room.points} POINTS → {state.currentTeam}
+            +{room.points} POINTS → {activeTeamName}
           </div>
         )}
         <div className="text-[12px] text-secondary-foreground tracking-[4px] text-center animate-fade-up" style={{ animationDelay: '1s', opacity: 0 }}>
@@ -161,14 +182,14 @@ const RoomTimerPage = () => {
         <div className="font-display text-[13px] font-bold tracking-[5px] text-secondary-foreground text-center">
           {room.name} ROOM — READY
         </div>
-        {state.currentTeam && (
+        {activeTeamName && (
           <div className="text-[10px] tracking-[3px] text-muted-foreground">
-            TEAM: <span className="text-foreground">{state.currentTeam}</span> — {room.points} PTS
+            TEAM: <span className={roomColor.base}>{activeTeamName}</span> — {room.points} PTS
           </div>
         )}
         <div className="border border-border bg-card p-8 w-full max-w-md flex flex-col gap-5 panel-glow">
           <div className="text-center">
-            <div className="font-display text-5xl font-black text-foreground glow-green-lg tracking-[-2px]">
+            <div className={`font-display text-5xl font-black tracking-[-2px] ${roomColor.base}`} style={{ textShadow: roomColor.glowLg }}>
               {String(room.timeMinutes).padStart(2, '0')}:{String(room.timeSeconds).padStart(2, '0')}
             </div>
             <div className="text-[10px] tracking-[3px] text-muted-foreground mt-2">TIME LIMIT</div>
@@ -188,7 +209,7 @@ const RoomTimerPage = () => {
       <MissionFailedFlash show={showFailFlash} />
       <div className="flex flex-col items-center justify-center min-h-screen pt-24 gap-0 px-6">
         <div className="font-display text-[11px] tracking-[8px] text-secondary-foreground mb-2 text-center">{room.name} ROOM</div>
-        <div className={`font-display font-black leading-none tracking-[-2px] text-center transition-all duration-500 ${colorClass}`} style={{ fontSize: 'clamp(72px, 18vw, 160px)' }}>
+        <div className={`font-display font-black leading-none tracking-[-2px] text-center transition-all duration-500 ${colorClass}`} style={{ fontSize: 'clamp(72px, 18vw, 160px)', textShadow: isLow ? undefined : isMid ? undefined : roomColor.glowLg }}>
           {timeStr}
         </div>
         <div className="text-muted-foreground text-[20px] tracking-[4px] text-center -mt-1 mb-5">

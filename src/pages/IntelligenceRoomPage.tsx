@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useGame } from '@/context/GameContext';
 import { playDTMF, playSuccess, playFail, playMissionFailed } from '@/lib/sounds';
 import { MissionFailedFlash } from '@/components/MissionFailedFlash';
+import { startBgMusic, stopBgMusic } from '@/lib/bgMusic';
 
 const TONES = [
   { num: '1', freqs: '697 + 1209 Hz' }, { num: '2', freqs: '697 + 1336 Hz' }, { num: '3', freqs: '697 + 1477 Hz' },
@@ -16,14 +17,18 @@ const KEY_LABELS: Record<string, string> = { '2': 'ABC', '3': 'DEF', '4': 'GHI',
 const IntelligenceRoomPage = () => {
   const { state, awardPoints } = useGame();
   const intel = state.intelligence;
+  
+  // Get active team for intelligence room
+  const intelRoom = state.rooms.find(r => r.id === 'intelligence');
+  const activeTeam = intelRoom ? state.teams.find(t => t.id === intelRoom.activeTeamId) : undefined;
+  const activeTeamName = activeTeam?.teamName || state.currentTeam;
+  
   const [screen, setScreen] = useState<'gate' | 'phone'>('gate');
   const [gateInput, setGateInput] = useState('');
   const [gateError, setGateError] = useState('');
   const [dialString, setDialString] = useState('');
   const [callResult, setCallResult] = useState<'none' | 'correct' | 'wrong'>('none');
   const [awarded, setAwarded] = useState(false);
-  
-  // Timer state
   const [timerStarted, setTimerStarted] = useState(false);
   const [timerRunning, setTimerRunning] = useState(false);
   const [remaining, setRemaining] = useState(0);
@@ -38,6 +43,10 @@ const IntelligenceRoomPage = () => {
   }, [intel.timeMinutes, intel.timeSeconds]);
 
   useEffect(() => {
+    return () => { stopBgMusic(); };
+  }, []);
+
+  useEffect(() => {
     if (timerRunning) {
       intervalRef.current = window.setInterval(() => {
         setRemaining(prev => {
@@ -45,6 +54,7 @@ const IntelligenceRoomPage = () => {
             clearInterval(intervalRef.current!);
             setTimerRunning(false);
             setShowFailFlash(true);
+            stopBgMusic();
             playMissionFailed();
             setTimeout(() => {
               setShowFailFlash(false);
@@ -67,6 +77,7 @@ const IntelligenceRoomPage = () => {
     setTimerStarted(true);
     setTimerRunning(true);
     setTimedOut(false);
+    startBgMusic('intelligence');
   }, [intel]);
 
   const checkGate = useCallback(() => {
@@ -91,8 +102,9 @@ const IntelligenceRoomPage = () => {
     if (dialString.replace(/\s/g, '') === intel.correctNumber) {
       setCallResult('correct');
       playSuccess();
-      if (state.currentTeam && !awarded) {
-        awardPoints(state.currentTeam, 'intelligence-task', intel.points || 100, elapsed);
+      stopBgMusic();
+      if (activeTeamName && !awarded) {
+        awardPoints(activeTeamName, 'intelligence-task', intel.points || 100, elapsed);
         setAwarded(true);
       }
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -102,13 +114,13 @@ const IntelligenceRoomPage = () => {
       playFail();
       setTimeout(() => setCallResult('none'), 3000);
     }
-  }, [dialString, intel, state.currentTeam, awarded, awardPoints, elapsed]);
+  }, [dialString, intel, activeTeamName, awarded, awardPoints, elapsed]);
 
   const mins = Math.floor(remaining / 60);
   const secs = remaining % 60;
   const totalSecs = (intel.timeMinutes || 6) * 60 + (intel.timeSeconds || 0);
   const pct = totalSecs > 0 ? remaining / totalSecs : 1;
-  const timerColor = pct <= 0.15 ? 'text-destructive glow-red animate-critical' : pct <= 0.33 ? 'text-warning glow-orange' : 'text-foreground glow-green';
+  const timerColor = pct <= 0.15 ? 'text-destructive glow-red animate-critical' : pct <= 0.33 ? 'text-warning glow-orange' : 'text-blue-400';
 
   if (timedOut) {
     return (
@@ -126,7 +138,7 @@ const IntelligenceRoomPage = () => {
       <MissionFailedFlash show={showFailFlash} />
       
       <div className="flex justify-between items-center px-6 py-3 border-b border-border bg-card">
-        <div className="font-display font-black text-base tracking-[4px] text-foreground glow-green">INTELLIGENCE ROOM</div>
+        <div className="font-display font-black text-base tracking-[4px] text-blue-400" style={{ textShadow: '0 0 20px #60a5fa' }}>INTELLIGENCE ROOM</div>
         {timerStarted && (
           <div className={`font-display text-xl font-black tracking-[3px] ${timerColor}`}>
             {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
@@ -140,8 +152,8 @@ const IntelligenceRoomPage = () => {
           <div className="font-display text-[14px] tracking-[5px] text-secondary-foreground text-center">CLASSIFIED ACCESS — LEVEL 2</div>
           
           {!timerStarted && (
-            <button onClick={startTimer} className="px-8 py-4 border border-foreground text-foreground font-display text-[13px] font-bold tracking-[5px] relative overflow-hidden group transition-all hover:text-background hover:shadow-[0_0_20px_hsl(var(--primary))]">
-              <span className="absolute inset-0 bg-foreground transform -translate-x-full group-hover:translate-x-0 transition-transform z-0" />
+            <button onClick={startTimer} className="px-8 py-4 border border-blue-400 text-blue-400 font-display text-[13px] font-bold tracking-[5px] relative overflow-hidden group transition-all hover:text-background hover:shadow-[0_0_20px_#60a5fa]">
+              <span className="absolute inset-0 bg-blue-400 transform -translate-x-full group-hover:translate-x-0 transition-transform z-0" />
               <span className="relative z-10">▶ START TIMER — {String(intel.timeMinutes || 6).padStart(2, '0')}:{String(intel.timeSeconds || 0).padStart(2, '0')}</span>
             </button>
           )}
@@ -173,21 +185,21 @@ const IntelligenceRoomPage = () => {
 
           <div className="bg-card border border-border p-7 flex flex-col items-center gap-5 w-full max-w-[340px] panel-glow">
             <div className="text-[9px] tracking-[3px] text-muted-foreground">SECURE DIAL TERMINAL</div>
-            <div className="w-full bg-background border border-muted-foreground p-3.5 text-center font-display text-[28px] tracking-[8px] text-foreground min-h-[56px] glow-green">
+            <div className="w-full bg-background border border-muted-foreground p-3.5 text-center font-display text-[28px] tracking-[8px] text-blue-400 min-h-[56px]" style={{ textShadow: '0 0 20px #60a5fa' }}>
               {dialString || '_'}
             </div>
             <div className="grid grid-cols-3 gap-2 w-full">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(k => (
-                <button key={k} onClick={() => pressKey(k)} className="py-4 bg-background border border-muted-foreground text-foreground font-display text-lg flex flex-col items-center gap-0.5 hover:border-foreground hover:shadow-[0_0_10px_hsla(152,100%,50%,0.2)] active:bg-foreground/10 transition-all">
+                <button key={k} onClick={() => pressKey(k)} className="py-4 bg-background border border-muted-foreground text-foreground font-display text-lg flex flex-col items-center gap-0.5 hover:border-foreground hover:shadow-[0_0_10px_hsla(217,92%,68%,0.2)] active:bg-foreground/10 transition-all">
                   {k}
                   {KEY_LABELS[k] && <span className="text-[7px] tracking-[2px] text-muted-foreground font-mono">{KEY_LABELS[k]}</span>}
                 </button>
               ))}
               <button onClick={() => setDialString(prev => prev.slice(0, -1))} className="py-4 bg-background border border-destructive/30 text-destructive font-display text-lg hover:border-destructive hover:shadow-[0_0_10px_hsla(348,100%,60%,0.2)] transition-all">⌫</button>
-              <button onClick={() => pressKey('0')} className="py-4 bg-background border border-muted-foreground text-foreground font-display text-lg flex flex-col items-center gap-0.5 hover:border-foreground hover:shadow-[0_0_10px_hsla(152,100%,50%,0.2)] active:bg-foreground/10 transition-all">
+              <button onClick={() => pressKey('0')} className="py-4 bg-background border border-muted-foreground text-foreground font-display text-lg flex flex-col items-center gap-0.5 hover:border-foreground hover:shadow-[0_0_10px_hsla(217,92%,68%,0.2)] active:bg-foreground/10 transition-all">
                 0<span className="text-[7px] tracking-[2px] text-muted-foreground font-mono">+</span>
               </button>
-              <button onClick={makeCall} className="py-4 bg-foreground/10 border border-foreground text-foreground font-display text-sm tracking-[2px] hover:bg-foreground hover:text-background hover:shadow-[0_0_20px_hsl(var(--primary))] transition-all">CALL</button>
+              <button onClick={makeCall} className="py-4 bg-blue-400/10 border border-blue-400 text-blue-400 font-display text-sm tracking-[2px] hover:bg-blue-400 hover:text-background hover:shadow-[0_0_20px_#60a5fa] transition-all">CALL</button>
             </div>
           </div>
 
@@ -208,14 +220,14 @@ const IntelligenceRoomPage = () => {
             <div className="text-destructive text-[11px] tracking-[2px] text-center">// NO ANSWER — WRONG NUMBER. CHECK YOUR DECODING.</div>
           )}
           {callResult === 'correct' && (
-            <div className="w-full max-w-[600px] border border-foreground p-6 bg-foreground/5 text-center">
-              <div className="font-display text-[12px] tracking-[4px] text-foreground mb-3">📞 CALL CONNECTED — VOICE MESSAGE RECEIVED</div>
+            <div className="w-full max-w-[600px] border border-blue-400 p-6 bg-blue-400/5 text-center">
+              <div className="font-display text-[12px] tracking-[4px] text-blue-400 mb-3">📞 CALL CONNECTED — VOICE MESSAGE RECEIVED</div>
               <div className="text-[13px] leading-[2] tracking-[1px] text-secondary-foreground">
                 <em>"You've reached the right line, agent. Here is your clearance word."</em>
               </div>
-              <div className="font-display text-2xl text-foreground tracking-[8px] glow-green mt-3">{intel.roomPassword}</div>
-              {state.currentTeam && awarded && (
-                <div className="text-[11px] tracking-[3px] text-secondary-foreground mt-3">+{intel.points} POINTS → {state.currentTeam}</div>
+              <div className="font-display text-2xl text-blue-400 tracking-[8px] mt-3" style={{ textShadow: '0 0 20px #60a5fa' }}>{intel.roomPassword}</div>
+              {activeTeamName && awarded && (
+                <div className="text-[11px] tracking-[3px] text-secondary-foreground mt-3">+{intel.points} POINTS → {activeTeamName}</div>
               )}
               <div className="text-[10px] text-muted-foreground tracking-[2px] mt-3">WRITE THIS DOWN. PRESENT IT AT THE ROOM EXIT.</div>
             </div>
