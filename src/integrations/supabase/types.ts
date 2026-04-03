@@ -117,6 +117,7 @@ export type Database = {
       }
       rooms: {
         Row: {
+          active_team_id: string | null
           id: string
           name: string
           password: string | null
@@ -128,6 +129,7 @@ export type Database = {
           volunteer_name: string | null
         }
         Insert: {
+          active_team_id?: string | null
           id: string
           name: string
           password?: string | null
@@ -139,6 +141,7 @@ export type Database = {
           volunteer_name?: string | null
         }
         Update: {
+          active_team_id?: string | null
           id?: string
           name?: string
           password?: string | null
@@ -149,7 +152,15 @@ export type Database = {
           updated_at?: string | null
           volunteer_name?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "rooms_active_team_id_fkey"
+            columns: ["active_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_scores: {
         Row: {
@@ -219,6 +230,27 @@ export type Database = {
           member4?: string | null
           team_name?: string
           total_points?: number | null
+        }
+        Relationships: []
+      }
+      volunteers: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          password: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          password?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          password?: string
         }
         Relationships: []
       }
